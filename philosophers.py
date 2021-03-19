@@ -45,6 +45,7 @@ class Hunger(threading.Thread):
         # while philosopher's still active (hunger > 0)
         # determine random rate to subtract random quantity of hunger
         while self.active:
+            random.seed()
             rate_of_starvation = float(random.randint(2, 5))
             qnt_of_starvation = float(random.randint(5, 15))
 
@@ -95,6 +96,7 @@ class Philosopher(threading.Thread):
 
     # ponder is a waiting function which sleeps for a period of 1 to 4 seconds
     def ponder(self):
+        random.seed()
         time_in_thought = random.randint(1, 4)
         time.sleep(float(time_in_thought))
 
@@ -119,10 +121,13 @@ class Philosopher(threading.Thread):
         # signal for monitoring process
         self.feasting = True
 
-        # assign random value from 1-5 for time spent eating. Hunger meter
-        # is filled proportional to the amount of time spent eating.
+        # assign random value from 1-5 for time spent eating.
+        random.seed()
         time_eating = float(random.randint(1, 5))
-        self.hunger.fill(20 * (time_eating / 5))
+
+        # hunger meter filled proportional to the amount of time spent eating.
+        # largest possible increase per session is 14.
+        self.hunger.fill(14 * (time_eating / 5))
         time.sleep(time_eating)
 
         self.feasting = False
@@ -156,11 +161,11 @@ class Monitor():
             # instantiate status bar for each Philosopher passed in philosophers:[]Philosopher
             for philosopher in self.philosophers:
                 status_format = '{philosopher}{fill}Status: {status}{fill} Hunger: {hunger}'
-                status_bar = self.manager.status_bar(status_format=status_format,
-                                                     color='green',
-                                                     philosopher=f'Philosopher {philosopher.uuid}',
+                status_bar = self.manager.status_bar(color='green',
                                                      status=f'{"thinking":10}',
-                                                     hunger=f'{philosopher.hunger.get_hunger():3.0f}')
+                                                     hunger=f'{philosopher.hunger.get_hunger():3.0f}',
+                                                     philosopher=f'Philosopher {philosopher.uuid}',
+                                                     status_format=status_format)
                 self.status_bars.append(status_bar)
 
             # while the count of exited Philosospher processes not equal to count of all Philosophers
