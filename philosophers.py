@@ -1,4 +1,5 @@
 import threading
+import enlighten
 import random
 import time
 import math
@@ -19,7 +20,7 @@ class Fork(object):
 
 class Hunger(threading.Thread):
     def __init__(self, philosopher_id: int):
-        self.uid = philosopher_id
+        self.uuid = philosopher_id
         self.active = True
         self.hunger = 100
         threading.Thread.__init__(self, daemon=True)
@@ -34,26 +35,26 @@ class Hunger(threading.Thread):
 
     def fill(self, amount: int):
         hunger_level = self.hunger + amount
-        self.hunger = 100 if hunger_level > 100 else hunger_level
+        self.hunger = 100.0 if hunger_level > 100.0 else hunger_level
 
     def deplete(self, amount: int):
         hunger_level = self.hunger - amount
-        self.hunger = 0 if hunger_level <= 0 else hunger_level
+        self.hunger = 0.0 if hunger_level <= 0.0 else hunger_level
 
     def get_hunger(self):
         return self.hunger
 
     def starved(self):
-        return self.hunger <= 0
+        return self.hunger <= 0.0
 
 
 class Philosopher(threading.Thread):
-    def __init__(self, uid: int, forkLeft: Fork, forkRight: Fork):
-        self.uid = uid
+    def __init__(self, uuid: int, forkLeft: Fork, forkRight: Fork):
+        self.uuid = uuid
+        self.hunger = Hunger(philosopher_id=uuid)
+        self.feasting = False
         self.forkLeft = forkLeft
         self.forkRight = forkRight
-        self.feasting = False
-        self.hunger = Hunger(philosopher_id=uid)
 
         threading.Thread.__init__(self)
 
@@ -67,13 +68,11 @@ class Philosopher(threading.Thread):
         self.__clean_up()
 
     def ponder(self):
-        time_in_thought = random.randint(1, 8)
+        time_in_thought = random.randint(1, 4)
         time.sleep(float(time_in_thought))
 
     def try_eat(self):
-        acquired = self.forkLeft.acquire(blocking=False)
-        if not acquired:
-            return
+        self.forkLeft.acquire(blocking=True)  # be greedy
 
         acquired = self.forkRight.acquire(blocking=False)
         if not acquired:
@@ -88,8 +87,8 @@ class Philosopher(threading.Thread):
     def feast(self):
         self.feasting = True
 
-        time_eating = float(random.randint(1, 10))
-        self.hunger.fill(20 * (time_eating / 10))
+        time_eating = float(random.randint(1, 5))
+        self.hunger.fill(20 * (time_eating / 5))
         time.sleep(time_eating)
 
         self.feasting = False
@@ -101,38 +100,39 @@ class Philosopher(threading.Thread):
         self.hunger.active = False
 
 
-class Monitor(threading.Thread):
-    def __init__(self, philosophers: Philosopher):
-        self.active = True
-        self.philosphers = philosophers
+class Monitor():
+    def __init__(self, philosophers: list()):
+        self.manager = enlighten.get_manager()
+        self.status_bars = list()
+        self.philosophers = philosophers
         self.dead_count = 0
-        threading.Thread.__init__(self, daemon=True)
 
-    def run(self):
-        while not self.philosphers[0].is_alive():
-            time.sleep(.25)
+    def start(self):
+        with self.manager:
+            for philosopher in self.philosophers:
+                status_format = '{philosopher}{fill}Status: {status}{fill} Hunger: {hunger}'
+                status_bar = self.manager.status_bar(status_format=status_format,
+                                                     color='green',
+                                                     philosopher=f'Philosopher {philosopher.uuid}',
+                                                     status=f'{"thinking":10}',
+                                                     hunger=f'{philosopher.hunger.get_hunger():3.0f}')
+                self.status_bars.append(status_bar)
 
-        while self.dead_count != len(self.philosphers):
-            self.dead_count = 0
-            output = str()
+            while self.dead_count != len(self.philosophers):
+                self.dead_count = 0
 
-            for philosopher in self.philosphers:
-                prefix = f'philosopher {philosopher.uid}'
-                if philosopher.is_alive():
-                    # hunger = f'|{"#" * (40//philosopher.hunger.get_hunger())}'
-                    output += f'{prefix} Hunger: {philosopher.hunger.get_hunger()}'
-                    if philosopher.is_feasting():
-                        output += f' - eating'
+                for key, status_bar in enumerate(self.status_bars):
+                    philosopher = self.philosophers[key]
+                    if philosopher.is_alive():
+                        if philosopher.is_feasting():
+                            status_bar.update(
+                                status=f'{"eating":10}', hunger=f'{philosopher.hunger.get_hunger():3.0f}')
+                        else:
+                            status_bar.update(
+                                status=f'{"thinking":10}', hunger=f'{philosopher.hunger.get_hunger():3.0f}')
                     else:
-                        output += f' - thinking'
-                else:
-                    self.dead_count += 1
-                    output += f'{prefix} ded X('
-
-                output += '\n'
-
-            print(output)
-            time.sleep(.20)
+                        status_bar.update(status=f'{"ded X(":10}')
+                        self.dead_count += 1
 
 
 PHILOSOPHER_COUNT = 5
@@ -144,17 +144,16 @@ def main():
 
     # init five (5) philosophers
     philosophers = [
-        Philosopher(
-            uid=i,
-            forkLeft=forks[i % PHILOSOPHER_COUNT],
-            forkRight=forks[(i + 1) % PHILOSOPHER_COUNT])
+        Philosopher(uuid=i,
+                    forkLeft=forks[i % PHILOSOPHER_COUNT],
+                    forkRight=forks[(i + 1) % PHILOSOPHER_COUNT])
         for i in range(PHILOSOPHER_COUNT)
     ]
 
     for philosopher in philosophers:
         philosopher.start()
 
-    monitor = Monitor(philosophers)
+    monitor = Monitor(philosophers=philosophers)
     monitor.start()
 
 
